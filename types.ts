@@ -1,0 +1,13 @@
+
+export interface CaptionEntry {
+  timestamp: string;
+  text: string;
+}
+
+export interface VideoState {
+  file: File | null;
+  previewUrl: string | null;
+  isProcessing: boolean;
+  captions: CaptionEntry[];
+  error: string | null;
+}
