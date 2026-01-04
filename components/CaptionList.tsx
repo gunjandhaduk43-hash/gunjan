@@ -8,6 +8,23 @@ interface CaptionListProps {
 }
 
 const CaptionList: React.FC<CaptionListProps> = ({ captions, isProcessing }) => {
+  
+  // Helper to convert MM:SS to seconds
+  const timestampToSeconds = (ts: string): number => {
+    const [mins, secs] = ts.split(':').map(Number);
+    return (mins * 60) + secs;
+  };
+
+  // Helper to format seconds to HH:MM:SS,mmm for SRT
+  const formatSRTTime = (totalSeconds: number): string => {
+    const hrs = Math.floor(totalSeconds / 3600);
+    const mins = Math.floor((totalSeconds % 3600) / 60);
+    const secs = Math.floor(totalSeconds % 60);
+    const ms = Math.floor((totalSeconds % 1) * 1000);
+    
+    return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')},${ms.toString().padStart(3, '0')}`;
+  };
+
   const copyAllToClipboard = () => {
     const text = captions.map(c => `[${c.timestamp}] ${c.text}`).join('\n');
     navigator.clipboard.writeText(text);
@@ -20,7 +37,34 @@ const CaptionList: React.FC<CaptionListProps> = ({ captions, isProcessing }) => 
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `hinglish_shorts_captions_${Date.now()}.txt`;
+    a.download = `hinglish_captions_${Date.now()}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const downloadSrt = () => {
+    let srtContent = '';
+    
+    captions.forEach((caption, index) => {
+      const startTime = timestampToSeconds(caption.timestamp);
+      // Determine end time: next caption's start time OR start + 3 seconds for the last one
+      const nextStartTime = captions[index + 1] 
+        ? timestampToSeconds(captions[index + 1].timestamp) 
+        : startTime + 3;
+      
+      // Ensure subtitles don't overlap by subtracting a tiny amount from end time
+      const endTime = nextStartTime > startTime ? nextStartTime - 0.1 : startTime + 2;
+
+      srtContent += `${index + 1}\n`;
+      srtContent += `${formatSRTTime(startTime)} --> ${formatSRTTime(endTime)}\n`;
+      srtContent += `${caption.text}\n\n`;
+    });
+
+    const blob = new Blob([srtContent], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `capcut_ready_captions_${Date.now()}.srt`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -47,22 +91,29 @@ const CaptionList: React.FC<CaptionListProps> = ({ captions, isProcessing }) => 
         <div>
           <h2 className="text-xl font-bold flex items-center gap-2">
             <i className="fa-solid fa-list-check text-indigo-400"></i>
-            Short-Form Segments
+            Captions Generated
           </h2>
-          <p className="text-[10px] text-slate-500 uppercase tracking-tighter mt-1">~5 words per segment</p>
+          <p className="text-[10px] text-slate-500 uppercase tracking-tighter mt-1">Ready for CapCut Import</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button 
             onClick={copyAllToClipboard}
             className="text-[10px] font-bold uppercase tracking-wider bg-slate-800 hover:bg-slate-700 px-3 py-2 rounded-lg transition-colors border border-slate-700"
           >
-            Copy All
+            Copy
           </button>
           <button 
             onClick={downloadTxt}
-            className="text-[10px] font-bold uppercase tracking-wider bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-2 rounded-lg transition-colors shadow-lg shadow-indigo-600/20"
+            className="text-[10px] font-bold uppercase tracking-wider bg-slate-800 hover:bg-slate-700 px-3 py-2 rounded-lg transition-colors border border-slate-700"
           >
-            Download TXT
+            TXT
+          </button>
+          <button 
+            onClick={downloadSrt}
+            className="text-[10px] font-bold uppercase tracking-wider bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-2 rounded-lg transition-all shadow-lg shadow-emerald-600/20 flex items-center gap-2"
+          >
+            <i className="fa-solid fa-file-export"></i>
+            Download SRT
           </button>
         </div>
       </div>
@@ -79,12 +130,9 @@ const CaptionList: React.FC<CaptionListProps> = ({ captions, isProcessing }) => 
               </span>
               <div className="w-[1px] h-2 bg-slate-800 mt-1"></div>
             </div>
-            <p className="text-slate-200 text-base leading-tight flex-1 font-medium italic">
+            <p className="text-slate-200 text-sm leading-tight flex-1 font-medium italic">
               "{caption.text}"
             </p>
-            <div className="text-[10px] text-slate-600 font-mono">
-              {caption.text.split(' ').length}w
-            </div>
           </div>
         ))}
       </div>
@@ -92,7 +140,7 @@ const CaptionList: React.FC<CaptionListProps> = ({ captions, isProcessing }) => 
       <div className="mt-6 flex items-center gap-3 p-3 bg-indigo-500/5 rounded-lg border border-indigo-500/10">
         <div className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse"></div>
         <p className="text-[10px] text-indigo-300 font-semibold uppercase tracking-wider">
-          Optimized for Reels & TikTok speed
+          Pro Tip: Import the .SRT file directly into CapCut!
         </p>
       </div>
     </div>
