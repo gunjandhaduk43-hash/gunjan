@@ -11,3 +11,5 @@ export interface VideoState {
   captions: CaptionEntry[];
   error: string | null;
 }
+
+export type CaptionVibe = 'casual' | 'hype' | 'funny' | 'exact';
