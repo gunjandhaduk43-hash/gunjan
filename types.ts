@@ -13,3 +13,4 @@ export interface VideoState {
 }
 
 export type CaptionVibe = 'casual' | 'hype' | 'funny' | 'exact';
+export type SegmentStyle = 'standard' | 'triple';

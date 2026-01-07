@@ -1,9 +1,10 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
-import { CaptionEntry, CaptionVibe } from "../types";
+import { CaptionEntry, CaptionVibe, SegmentStyle } from "../types";
 
 /**
- * Optimized Chunked Base64 Converter
+ * Highly Optimized Chunked Base64 Converter
+ * Handles large video buffers without crashing browser memory.
  */
 export const fileToBase64 = async (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
@@ -13,18 +14,20 @@ export const fileToBase64 = async (file: File): Promise<string> => {
       const bytes = new Uint8Array(arrayBuffer);
       let binary = '';
       const len = bytes.byteLength;
-      const chunk_size = 8192;
+      
+      // Smaller chunk size for better memory management on mobile/low-ram devices
+      const chunk_size = 4096;
       
       try {
         for (let i = 0; i < len; i += chunk_size) {
-          const chunk = bytes.slice(i, i + chunk_size);
+          const chunk = bytes.subarray(i, i + chunk_size);
           // @ts-ignore
           binary += String.fromCharCode.apply(null, chunk);
         }
         const b64 = btoa(binary);
         resolve(b64);
       } catch (e) {
-        reject(new Error("Memory Limit: Video too large for processing."));
+        reject(new Error("BROWSER MEMORY LIMIT: This video file is too large for the browser's current RAM. Please try a smaller file (<50MB)."));
       }
     };
     reader.onerror = () => reject(new Error("Failed to read video file."));
@@ -36,37 +39,38 @@ export const generateVideoCaptions = async (
   videoBase64: string, 
   mimeType: string,
   vibe: CaptionVibe = 'casual',
-  highPrecision: boolean = false
+  highPrecision: boolean = false,
+  segmentStyle: SegmentStyle = 'standard'
 ): Promise<CaptionEntry[]> => {
-  // Always initialize with the environment key directly.
+  // Use the API KEY from the process environment
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
-  // High Precision (Deep Analysis) uses the Pro model, otherwise Flash.
+  // Use Gemini 3 Flash for speed on large files unless explicitly choosing Pro
   const modelName = highPrecision ? "gemini-3-pro-preview" : "gemini-3-flash-preview";
 
+  const isTripleMode = segmentStyle === 'triple';
+
   const systemInstruction = `
-    You are a high-precision video transcriptionist and editor.
-    Your task: Create PERFECT Hinglish (Hindi words in English script) captions.
+    You are a high-precision verbatim transcriptionist.
     
-    CORE REQUIREMENT: WORD-TO-WORD ACCURACY.
-    You must transcribe exactly what is spoken. Do not summarize. Do not skip fillers if they are significant.
+    CORE GOAL: 100% WORD-TO-WORD Hinglish transcription.
     
-    CRITICAL RULES:
-    1. Language: Hinglish (WhatsApp style/Romanized Hindi).
-    2. Sync: Create a new segment every 2-4 seconds matching the audio timing.
-    3. Length: Max 5-7 words per chunk to keep it readable.
-    4. Mode: ${vibe}.
+    DISPLAY STYLE: ${isTripleMode ? 'TRIPLE (3 Words per row)' : 'STANDARD (4-5 Words per row)'}
     
-    TONE & ACCURACY MODES:
-    - Exact: VERBATIM TRANSCRIPTION. Capture every word exactly as spoken. No creative changes.
-    - Casual: Natural Hinglish, captures the gist accurately but keeps it conversational.
-    - Hype: Punchy, bold, emphasizes key words, use 🔥 ⚡ emojis.
-    - Funny: Accurate transcription but uses witty Desi slang equivalents where appropriate.
+    CRITICAL INSTRUCTIONS:
+    1. Transcribe EXACTLY what is spoken. No paraphrasing.
+    2. Format: Hinglish (Hindi words in English/Roman script).
+    3. SEGMENTATION RULES:
+       ${isTripleMode 
+         ? '- Group exactly 3 words per timestamp. Each entry in the JSON MUST contain 3 words where possible.' 
+         : '- Group 4 to 5 words per timestamp. Never exceed 6 words per row.'}
+    4. Sync: Timestamps must be very accurate to the exact moment the phrase starts.
+    5. Mode: ${vibe}.
     
-    STRICT TRANSCRIPTION RULES:
-    - If the speaker says "Bhai sahab", do not write "Brother". Write "Bhai sahab".
-    - If the speaker says "Technical glitch hai", write exactly that.
-    - Ensure timestamps are perfectly aligned with when the words are actually said.
+    ACCURACY MODES:
+    - Exact: Capture every single word including repetition. 
+    - Casual: Normal Hinglish speaking style.
+    - Hype/Funny: Accurate but with emojis or slang emphasis.
     
     Output JSON format: [{"timestamp": "MM:SS", "text": "..."}]
   `;
@@ -83,7 +87,7 @@ export const generateVideoCaptions = async (
             }
           },
           {
-            text: `Transcribe this video word-to-word in ${vibe} Hinglish. Priority: Maximum accuracy. Deep Analysis: ${highPrecision}.`
+            text: `Transcribe this video verbatim. Style: ${segmentStyle}. Vibe: ${vibe}. Ensure strict ${isTripleMode ? '3 words per segment' : '4-5 words per segment'} formatting.`
           }
         ]
       },
@@ -95,8 +99,8 @@ export const generateVideoCaptions = async (
           items: {
             type: Type.OBJECT,
             properties: {
-              timestamp: { type: Type.STRING },
-              text: { type: Type.STRING },
+              timestamp: { type: Type.STRING, description: "MM:SS format" },
+              text: { type: Type.STRING, description: isTripleMode ? "Exactly 3 spoken words" : "4-5 spoken words" },
             },
             required: ["timestamp", "text"],
           },
@@ -104,11 +108,12 @@ export const generateVideoCaptions = async (
       },
     });
 
-    return JSON.parse(response.text || "[]") as CaptionEntry[];
+    if (!response.text) return [];
+    return JSON.parse(response.text.trim()) as CaptionEntry[];
   } catch (error: any) {
-    console.error("Gemini Error:", error);
-    if (error.message?.includes("413") || error.message?.includes("too large")) {
-      throw new Error("Video file is too large for the AI to process in one go.");
+    console.error("Gemini API Error:", error);
+    if (error.message?.includes("413") || error.message?.includes("too large") || error.message?.includes("quota")) {
+      throw new Error("VIDEO TOO BIG: The AI model has a size limit. Please try a shorter video or compress it.");
     }
     throw error;
   }
